@@ -3,9 +3,11 @@ package go_conf
 // 导入其它的包
 import (
 	"encoding/json"
+	"fmt"
 	"github.com/go-redis/redis/v7"
 	"log"
 	"os"
+	"strconv"
 	"time"
 )
 
@@ -20,7 +22,7 @@ const activityConfNum = "h:activity_conf_num"
 const readLockKey = "s:read_lock_key";
 const writeLockKey = "s:write_lock_key";
 
-const lockTime = 3;
+const lockTime = 30;
 
 type Root struct {
 	addr string
@@ -57,11 +59,26 @@ func now() int64 {
 	return time.Now().Unix()
 }
 
+func checkRds(rdb *redis.Client) {
+	for  {
+		_, err := rdb.Ping().Result() // 检查是否连接
+		if err != nil {
+			panic(err)
+		}
+		time.Sleep(time.Duration(1) * time.Second)
+	}
+}
+
 func (this *Root) Start(addr string, auth string) {
+	fmt.Println("start")
+
 	this.addr = addr
 	this.auth = auth
 	this.sub_redis = getRedis(addr, auth)
 	this.req_redis = getRedis(addr, auth)
+	go checkRds(this.sub_redis)
+	go checkRds(this.req_redis)
+
 	this.data = make(map[string]node, 100)
 
 	this.initData()
@@ -69,8 +86,36 @@ func (this *Root) Start(addr string, auth string) {
 	select {}
 }
 
-func (this *Root) initData() {
+func (this *Root) AddData(kid string, name string, data string) {
+	_, ok := this.data[kid]
+	if !ok {
+		this.data[kid] = make(node, 10)
+	}
 
+	this.data[kid][name] = data
+}
+
+func (this *Root) DelData(kid string, name string) {
+	_, ok := this.data[kid]
+	if !ok {
+		return
+	}
+
+	delete(this.data[kid], name)
+}
+
+func (this *Root) initData() {
+	this.readLock()
+	rds := this.req_redis
+	cmdAll := rds.HGetAll(activityConfNum)
+	for kid, _ := range(cmdAll.Val()) {
+		cmdKid := rds.HGetAll(fmt.Sprintf(activityConfKid, kid))
+		for name, str := range (cmdKid.Val()) {
+			this.AddData(kid, name, str)
+		}
+	}
+
+	fmt.Println(this.data)
 }
 
 func (this *Root)onMsg(op string, msg Msg) {
@@ -81,12 +126,12 @@ func (this *Root)onMsg(op string, msg Msg) {
 
 	switch op {
 	case ChannelAdd:
-		this.data[msg.Kid][msg.Name] = msg.Data
+		this.AddData(msg.Kid, msg.Name, msg.Data)
 	case ChannelDel:
-		delete(this.data[msg.Kid], msg.Name)
+		this.DelData(msg.Kid, msg.Name)
 	}
-	log.Println(this.data)
 	this.req_redis.Incr(msg.Seq)
+	fmt.Println(this.data)
 }
 
 func (this *Root)Subscribe(channels ...string) {
@@ -106,11 +151,12 @@ func (this *Root)Subscribe(channels ...string) {
 	if err != nil {
 		log.Fatal(err)
 	}
+	this.unLockRead()
 
 	// 用管道来接收消息
 	ch := pubsub.Channel()
-
 	// 处理消息
+
 	for info := range ch {
 		log.Println(info.Channel, ":", info.Payload)
 		msg := Msg{}
@@ -132,7 +178,7 @@ func (this *Root) getScript() string {
 	`
 }
 
-func (this *Root) lock() {
+func (this *Root) readLock() {
 	start_time := now()
 	script := this.getScript()
 	keys := []string{
@@ -146,29 +192,50 @@ func (this *Root) lock() {
 	this.lockWithRetry(script, keys)
 }
 
-func (this *Root) lockWithRetry(script string, keys []string) {
+func (this *Root) unLockRead() {
+	rds := this.req_redis
+	rds.ZRem(readLockKey, getHostName())
+}
+
+func (this *Root) lockWithRetry(str string, keys []string) bool {
 	rds := this.req_redis
 	start_time := now()
-	sha := ""
+	hasSha := false
 
 	for true {
 		now := now()
-		keys[1] = string(now - lockTime)
-		keys[2] = string(now)
-		keys[4] = string(now)
-		if sha == "" {
-			cmd := rds.Eval(script, keys, len(keys))
+		keys[1] = strconv.FormatInt(now - lockTime, 10)
+		keys[2] = strconv.FormatInt(now, 10)
+		keys[4] = strconv.FormatInt(now, 10)
+		var cmd *redis.Cmd
 
+		script := redis.NewScript(str)
+
+		if hasSha == false {
+			cmd = script.Eval(rds, keys, len(keys))
+			hasSha = true
 		} else {
-
+			cmd = script.EvalSha(rds, keys, len(keys))
+		}
+		if cmd.Err() != nil {
+			fmt.Println(keys)
+			panic(cmd.Err())
 		}
 
+		ret, _ := cmd.Bool()
+		if ret {
+			break
+		}
 
+		fmt.Println("lock")
+		fmt.Println(cmd)
+		if now - start_time > lockTime {
+			panic("lock failed")
+			return false
+		}
+
+		time.Sleep(time.Duration(100) * time.Millisecond)
 	}
 
-
-
-	rds.Eval(script, keys)
-
-
+	return true
 }
