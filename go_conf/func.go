@@ -1,73 +1,13 @@
 package go_conf
 
-// 导入其它的包
 import (
 	"encoding/json"
 	"fmt"
 	"github.com/go-redis/redis/v7"
 	"log"
-	"os"
 	"strconv"
 	"time"
 )
-
-type node map[string]string
-
-const ChannelAdd = "channel_add"
-const ChannelDel = "channel_del"
-
-const activityConfKid = "h:activity_conf_kid:%s"
-const activityConfNum = "h:activity_conf_num"
-
-const readLockKey = "s:read_lock_key";
-const writeLockKey = "s:write_lock_key";
-
-const lockTime = 30;
-
-type Root struct {
-	addr string
-	auth string
-	data map[string]node
-	sub_redis *redis.Client
-	req_redis *redis.Client
-}
-
-type Msg struct {
-	Name string `json:"_name"`
-	Kid string `json:"_kid"`
-	Seq string `json:"_seq"`
-	Data string `json:"_data"`
-}
-
-func getRedis(addr string, auth string) *redis.Client {
-	return redis.NewClient(&redis.Options{
-		Addr:     addr, // 使用默认数据库
-		Password: auth,                // 没有密码则置空
-		DB:       0,                    // 使用默认的数据库
-	})
-}
-
-func getHostName() string {
-	name, err := os.Hostname()
-	if err != nil {
-		return ""
-	}
-	return name
-}
-
-func now() int64 {
-	return time.Now().Unix()
-}
-
-func checkRds(rdb *redis.Client) {
-	for  {
-		_, err := rdb.Ping().Result() // 检查是否连接
-		if err != nil {
-			panic(err)
-		}
-		time.Sleep(time.Duration(1) * time.Second)
-	}
-}
 
 func (this *Root) Start(addr string, auth string) {
 	fmt.Println("start")
