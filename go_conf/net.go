@@ -36,11 +36,9 @@ func netSrv(root *Root) {
 }
 
 func sendMsg(conn *net.UnixConn, msg []byte) {
-	b := []byte(msg)
-	l := Int2Byte(len(b))
-	conn.Write([]byte(l))
-	conn.Write(b)
-	fmt.Println(string(b))
+	l := Int2Byte(len(msg))
+	conn.Write(l)
+	conn.Write(msg)
 }
 
 func unixPipe(conn *net.UnixConn) {
@@ -52,6 +50,7 @@ func unixPipe(conn *net.UnixConn) {
 	reader := bufio.NewReader(conn)
 	request := Request{}
 	responce := Responce{}
+
 	for {
 		message, err := reader.ReadString('\n')
 		if err != nil {
