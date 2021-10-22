@@ -29,3 +29,13 @@ type Msg struct {
 	Seq string `json:"_seq"`
 	Data string `json:"_data"`
 }
+
+type Request struct {
+	Method string `json:"method"`
+	Params map[string]string `json:"params"`
+}
+
+type Responce struct {
+	Ret string `json:"ret"`
+	Data string `json:"data"`
+}

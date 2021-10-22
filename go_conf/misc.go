@@ -4,6 +4,7 @@ import (
 	"github.com/go-redis/redis/v7"
 	"os"
 	"time"
+	"unsafe"
 )
 
 func getRedis(addr string, auth string) *redis.Client {
@@ -34,4 +35,15 @@ func checkRds(rdb *redis.Client) {
 		}
 		time.Sleep(time.Duration(1) * time.Second)
 	}
+}
+
+func Int2Byte(data int)(ret []byte){
+	len := unsafe.Sizeof(data)
+	ret = make([]byte, len)
+	var tmp int = 0xff
+	var index uint = 0
+	for index=0; index<uint(len); index++{
+		ret[index] = byte((tmp<<(index*8) & data)>>(index*8))
+	}
+	return ret
 }

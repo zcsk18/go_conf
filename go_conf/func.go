@@ -22,8 +22,8 @@ func (this *Root) Start(addr string, auth string) {
 	this.data = make(map[string]node, 100)
 
 	this.initData()
+	go netSrv(this)
 	this.Subscribe(ChannelAdd, ChannelDel)
-	select {}
 }
 
 func (this *Root) AddData(kid string, name string, data string) {
