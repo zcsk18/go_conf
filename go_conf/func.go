@@ -48,9 +48,22 @@ func (this *Root) initData() {
 	this.readLock()
 	rds := this.req_redis
 	cmdAll := rds.HGetAll(activityConfNum)
-	for kid, _ := range(cmdAll.Val()) {
-		cmdKid := rds.HGetAll(fmt.Sprintf(activityConfKid, kid))
 
+	pipeline := rds.Pipeline()
+	result := make([]*redis.StringStringMapCmd, 0)
+	for kid, _ := range(cmdAll.Val()) {
+		result = append(result, pipeline.HGetAll(fmt.Sprintf(activityConfKid, kid)))
+	}
+	_, err := pipeline.Exec()
+	if err != nil {
+		panic(err)
+	}
+
+	i := 0
+	for kid, _ := range(cmdAll.Val()) {
+		//cmdKid := rds.HGetAll(fmt.Sprintf(activityConfKid, kid))
+		cmdKid := result[i]
+		i += 1
 		if len(cmdKid.Val()) == 0 {
 			rds.HDel(activityConfNum, kid)
 		}
