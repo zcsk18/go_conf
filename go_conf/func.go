@@ -50,6 +50,11 @@ func (this *Root) initData() {
 	cmdAll := rds.HGetAll(activityConfNum)
 	for kid, _ := range(cmdAll.Val()) {
 		cmdKid := rds.HGetAll(fmt.Sprintf(activityConfKid, kid))
+
+		if len(cmdKid.Val()) == 0 {
+			rds.HDel(activityConfNum, kid)
+		}
+
 		for name, str := range (cmdKid.Val()) {
 			this.AddData(kid, name, str)
 		}

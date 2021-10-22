@@ -64,7 +64,7 @@ func unixPipe(conn *net.UnixConn) {
 		case "getConf":
 			responce = getConf(request.Params["kid"], request.Params["name"])
 		}
-
+		fmt.Println(responce)
 		buf,err := json.Marshal(responce)
 		if err != nil {
 			return
